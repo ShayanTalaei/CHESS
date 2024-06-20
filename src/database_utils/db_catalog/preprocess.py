@@ -1,11 +1,14 @@
 import os
 from pathlib import Path
 import logging
+from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain.schema.document import Document
 from langchain_openai import OpenAIEmbeddings
 
 from database_utils.db_catalog.csv_utils import load_tables_description
+
+load_dotenv(override=True)
 
 EMBEDDING_FUNCTION = OpenAIEmbeddings(model="text-embedding-3-large")
 

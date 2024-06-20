@@ -1,7 +1,6 @@
 data_mode='dev' # Options: 'dev', 'train' 
 
-target_dataset='all' #california_schools_4, test
-data_path="./data/${data_mode}/${data_mode}_${target_dataset}.json"
+data_path="./data/dev/dev.json" # UPDATE THIS WITH THE PATH TO THE TARGET DATASET
 
 pipeline_nodes='keyword_extraction+entity_retrieval+context_retrieval+column_filtering+table_selection+column_selection+candidate_generation+revision+evaluation'
 checkpoint_nodes=''
@@ -85,8 +84,6 @@ pipeline_setup='{
     }
 }'
 
-
-run_name="dataset: ${data_mode} ${target_dataset}\ncheckpoint_nodes: ${checkpoint_nodes}\npipeline_nodes: ${pipeline_nodes}" 
 echo -e "${run_name}"
 python3 -u ./src_new/main.py --data_mode ${data_mode} --data_path ${data_path}\
         --pipeline_nodes ${pipeline_nodes} --pipeline_setup "$pipeline_setup"\

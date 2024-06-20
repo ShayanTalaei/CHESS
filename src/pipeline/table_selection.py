@@ -55,9 +55,16 @@ def table_selection(task: Any, tentative_schema: Dict[str, List[str]], execution
 
         aggregated_result = aggregate_tables(response)
         table_names = aggregated_result["table_names"]
+        result = {
+            "chain_of_thought_reasoning": aggregated_result["chain_of_thought_reasoning"],
+            "selected_tables": table_names,
+        }
     elif mode == "corrects":
         logging.info("Retrieving correct tables from SQL task")
         table_names = DatabaseManager().get_sql_tables(task.sql)
+        result = {
+            "selected_tables": table_names,
+        }
     else:
         logging.error(f"Unknown mode for table selection: {mode}")
         raise ValueError(f"Unknown mode for table selection: {mode}")
@@ -71,7 +78,8 @@ def table_selection(task: Any, tentative_schema: Dict[str, List[str]], execution
     add_columns_to_tentative_schema(tentative_schema, similar_columns)
     tentative_schema = DatabaseManager().add_connections_to_tentative_schema(tentative_schema)
 
-    result = {"tentative_schema": tentative_schema, "selected_tables": table_names}
+    result = {"tentative_schema": tentative_schema, 
+              **result}
     logging.info("Table selection completed successfully")
     return result
 
