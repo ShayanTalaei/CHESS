@@ -1,8 +1,29 @@
+# Python 虚拟环境
 venv/
+ENV/
+env/
+.venv/
+
+# 环境变量文件
 .env
+
+# 生成的结果文件
 results/
 data/
-src/__pycache__/
-.DS_Store
-*.pyc
+
+# Python 缓存文件
 __pycache__/
+*.pyc
+*.pyo
+
+# 特定目录的缓存
+src/__pycache__/
+
+# macOS 系统文件
+.DS_Store
+
+# IDE 和编辑器文件（可选，根据使用的工具添加）
+# PyCharm
+.idea/
+# VSCode
+.vscode/
