@@ -8,7 +8,7 @@ from database_utils.db_values.preprocess import make_db_lsh
 from database_utils.db_catalog.preprocess import make_db_context_vec_db
 
 load_dotenv(override=True)
-NUM_WORKERS = 1
+NUM_WORKERS = 10
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
