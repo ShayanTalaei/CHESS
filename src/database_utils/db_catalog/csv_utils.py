@@ -50,7 +50,7 @@ def load_tables_description(db_directory_path: str, use_value_description: bool)
                 logging.info(f"Loaded descriptions from {csv_file} with encoding {encoding_type}")
                 could_read = True
                 break
-            except Exception as e:
+            except Exception:
                 continue
     if not could_read:
         logging.warning(f"Could not read descriptions from {csv_file}")

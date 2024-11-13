@@ -1,0 +1,59 @@
+setting_name: CHESS_IR_CG_UT
+
+team_agents:
+  information_retriever:
+    engine: 'gpt-4o-mini'
+    tools:
+      extract_keywords:
+        template_name: 'extract_keywords'
+        engine_config:
+          engine_name: 'gpt-4o-mini'
+          temperature: 0.2
+        parser_name: 'python_list_output_parser'
+      retrieve_entity: {}
+      retrieve_context:
+        top_k: 5
+
+  candidate_generator:
+    engine: 'gpt-4o-mini'
+    tools:
+      generate_candidate:
+        generator_configs:
+          - template_name: 'generate_candidate_one'
+            engine_config:
+              engine_name: 'gpt-4o-mini'
+              temperature: 0.5
+            parser_name: 'generate_candidate_gemini_markdown_cot'
+            sampling_count: 10
+          - template_name: 'generate_candidate_two'
+            engine_config:
+              engine_name: 'gpt-4o-mini'
+              temperature: 0.5
+            parser_name: 'generate_candidate_gemini_markdown_cot'
+            sampling_count: 10
+
+      revise:
+        template_name: 'revise_one'
+        engine_config:
+          engine_name: 'gpt-4o-mini'
+          temperature: 0.0
+        parser_name: 'revise_new'
+
+  unit_tester:
+    engine: 'gpt-4o-mini'
+    tools:
+      generate_unit_test:
+        template_name: 'generate_unit_tests'
+        engine_config:
+          engine_name: 'gpt-4o-mini'
+          temperature: 0.8
+        parser_name: 'generate_unit_tests'
+        unit_test_count: 20
+        sampling_count: 1
+
+      evaluate:
+        template_name: 'evaluate'
+        engine_config:
+          engine_name: 'gpt-4o-mini'
+          temperature: 0.0
+        parser_name: 'evaluate'

@@ -1,14 +1,16 @@
 import os
+import socket
 import pickle
 from threading import Lock
 from pathlib import Path
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from typing import Callable, Dict, List, Any
+import time
 
 from database_utils.schema import DatabaseSchema
 from database_utils.schema_generator import DatabaseSchemaGenerator
-from database_utils.execution import execute_sql, compare_sqls, validate_sql_query, aggregate_sqls
+from database_utils.execution import execute_sql, compare_sqls, validate_sql_query, aggregate_sqls, get_execution_status, subprocess_sql_executor
 from database_utils.db_info import get_db_all_tables, get_table_all_columns, get_db_schema
 from database_utils.sql_parser import get_sql_tables, get_sql_columns_dict, get_sql_condition_literals
 from database_utils.db_values.search import query_lsh
@@ -18,6 +20,9 @@ from database_utils.db_catalog.csv_utils import load_tables_description
 
 load_dotenv(override=True)
 DB_ROOT_PATH = Path(os.getenv("DB_ROOT_PATH"))
+
+INDEX_SERVER_HOST = os.getenv("INDEX_SERVER_HOST")
+INDEX_SERVER_PORT = int(os.getenv("INDEX_SERVER_PORT"))
 
 class DatabaseManager:
     """
@@ -66,8 +71,10 @@ class DatabaseManager:
         with self._lock:
             if self.lsh is None:
                 try:
+                    start_time = time.time()
                     with (self.db_directory_path / "preprocessed" / f"{self.db_id}_lsh.pkl").open("rb") as file:
                         self.lsh = pickle.load(file)
+                    after_lsh_time = time.time()
                     with (self.db_directory_path / "preprocessed" / f"{self.db_id}_minhashes.pkl").open("rb") as file:
                         self.minhashes = pickle.load(file)
                     return "success"
@@ -97,7 +104,7 @@ class DatabaseManager:
         else:
             return "success"
 
-    def query_lsh(self, keyword: str, signature_size: int = 20, n_gram: int = 3, top_n: int = 10) -> Dict[str, List[str]]:
+    def query_lsh(self, keyword: str, signature_size: int = 100, n_gram: int = 3, top_n: int = 10) -> Dict[str, List[str]]:
         """
         Queries the LSH for similar values to the given keyword.
 
@@ -110,13 +117,29 @@ class DatabaseManager:
         Returns:
             Dict[str, List[str]]: The dictionary of similar values.
         """
+        
+        # try:
+        #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #         s.connect((INDEX_SERVER_HOST, INDEX_SERVER_PORT))
+        #         s.sendall(pickle.dumps({
+        #             "db_directory_path": str(self.db_directory_path),
+        #             "db_id": self.db_id,
+        #             "type": "query_lsh",
+        #             "keyword": keyword
+        #         }))
+        #         return receive_data_in_chunks(s)
+        # except ConnectionRefusedError:
+        #     print(f"Connection refused for {self.db_id}")
         lsh_status = self.set_lsh()
         if lsh_status == "success":
             return query_lsh(self.lsh, self.minhashes, keyword, signature_size, n_gram, top_n)
         else:
             raise Exception(f"Error loading LSH for {self.db_id}")
+        # except Exception as e:
+        #     print(f"Error querying LSH for {self.db_id}: {e}")
+        #     raise Exception(f"Error querying LSH for {self.db_id}: {e}")
 
-    def query_vector_db(self, keyword: str, top_k: int) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    def query_vector_db(self, keyword: str, top_k: int) -> Dict[str, Any]:
         """
         Queries the vector database for similar values to the given keyword.
 
@@ -125,17 +148,33 @@ class DatabaseManager:
             top_k (int): The number of top results to return.
 
         Returns:
-            Dict[str, Dict[str, Dict[str, Any]]]: The dictionary of similar values.
+            Dict[str, Any]: The dictionary of similar values.
         """
+        
+        # try:
+        #     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        #         s.connect((INDEX_SERVER_HOST, INDEX_SERVER_PORT))
+        #         s.sendall(pickle.dumps({
+        #             "db_directory_path": str(self.db_directory_path),
+        #             "db_id": self.db_id,
+        #             "type": "query_vector_db",
+        #             "keyword": keyword,
+        #             "top_k": top_k
+        #         }))
+        #         return receive_data_in_chunks(s)
+        # except ConnectionRefusedError:
         vector_db_status = self.set_vector_db()
         if vector_db_status == "success":
             return query_vector_db(self.vector_db, keyword, top_k)
         else:
             raise Exception(f"Error loading Vector DB for {self.db_id}")
+        # except Exception as e:
+        #     raise Exception(f"Error querying Vector DB for {self.db_id}: {e}")
 
-    def get_column_profiles(self, schema_with_examples: Dict[str, List[str]], 
+    def get_column_profiles(self, schema_with_examples: Dict[str, Dict[str, List[str]]],
                             use_value_description: bool, with_keys: bool, 
-                            with_references: bool) -> Dict[str, Dict[str, str]]:
+                            with_references: bool,
+                            tentative_schema: Dict[str, List[str]] = None) -> Dict[str, Dict[str, str]]:
         """
         Generates column profiles for the schema.
 
@@ -150,7 +189,7 @@ class DatabaseManager:
         """
         schema_with_descriptions = load_tables_description(self.db_directory_path, use_value_description)
         database_schema_generator = DatabaseSchemaGenerator(
-            tentative_schema=DatabaseSchema.from_schema_dict(self.get_db_schema()),
+            tentative_schema=DatabaseSchema.from_schema_dict(tentative_schema if tentative_schema else self.get_db_schema()),
             schema_with_examples=DatabaseSchema.from_schema_dict_with_examples(schema_with_examples),
             schema_with_descriptions=DatabaseSchema.from_schema_dict_with_descriptions(schema_with_descriptions),
             db_id=self.db_id,
@@ -202,7 +241,33 @@ class DatabaseManager:
             db_id=self.db_id,
             db_path=self.db_path,
         )
-        return schema_generator.get_schema_with_connections()
+        tentative_schema = schema_generator.get_schema_with_connections()
+
+    def get_union_schema_dict(self, schema_dict_list: List[Dict[str, List[str]]]) -> Dict[str, List[str]]:
+        """
+        Unions a list of schemas.
+
+        Args:
+            schema_dict_list (List[Dict[str, List[str]]): The list of schemas.
+
+        Returns:
+            Dict[str, List[str]]: The unioned schema.
+        """
+        full_schema = DatabaseSchema.from_schema_dict(self.get_db_schema())
+        actual_name_schemas = []
+        for schema in schema_dict_list:
+            subselect_schema = full_schema.subselect_schema(DatabaseSchema.from_schema_dict(schema))
+            schema_dict = subselect_schema.to_dict()
+            actual_name_schemas.append(schema_dict)
+        # actual_name_schemas = [(full_schema.subselect_schema(DatabaseSchema.from_schema_dict(schema))).to_dict() for schema in schema_dict_list]
+        union_schema = {}
+        for schema in actual_name_schemas:
+            for table, columns in schema.items():
+                if table not in union_schema:
+                    union_schema[table] = columns
+                else:
+                    union_schema[table] = list(set(union_schema[table] + columns))
+        return union_schema
 
     @staticmethod
     def with_db_path(func: Callable):
@@ -227,6 +292,7 @@ class DatabaseManager:
 
 # List of functions to be added to the class
 functions_to_add = [
+    subprocess_sql_executor,
     execute_sql, 
     compare_sqls,
     validate_sql_query,
@@ -236,8 +302,25 @@ functions_to_add = [
     get_db_schema,
     get_sql_tables,
     get_sql_columns_dict,
-    get_sql_condition_literals
+    get_sql_condition_literals,
+    get_execution_status
 ]
 
 # Adding methods to the class
 DatabaseManager.add_methods_to_class(functions_to_add)
+
+# Auxiliary function for interacting with the index server
+def receive_data_in_chunks(conn, chunk_size=1024):
+            length_bytes = conn.recv(4)
+            if not length_bytes:
+                return None
+            data_length = int.from_bytes(length_bytes, byteorder='big')
+            chunks = []
+            bytes_received = 0
+            while bytes_received < data_length:
+                chunk = conn.recv(min(data_length - bytes_received, chunk_size))
+                if not chunk:
+                    raise ConnectionError("Connection lost")
+                chunks.append(chunk)
+                bytes_received += len(chunk)
+            return pickle.loads(b''.join(chunks))

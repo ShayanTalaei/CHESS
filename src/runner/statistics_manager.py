@@ -37,7 +37,6 @@ class Statistics:
             }
         }
 
-
 class StatisticsManager:
     def __init__(self, result_directory: str):
         """
@@ -55,34 +54,34 @@ class StatisticsManager:
             self.statistics_file_path.touch()
             self.dump_statistics_to_file()
 
-    def update_stats(self, db_id: str, question_id: str, evaluation_for: str, result: Dict[str, Any]):
+    def update_stats(self, db_id: str, question_id: str, validation_for: str, result: Dict[str, Any]):
         """
-        Updates the statistics based on the evaluation result.
+        Updates the statistics based on the validation result.
 
         Args:
             db_id (str): The database ID.
             question_id (str): The question ID.
-            evaluation_for (str): The evaluation context.
-            result (Dict[str, Any]): The evaluation result.
+            validation_for (str): The validation context.
+            result (Dict[str, Any]): The validation result.
         """
         exec_res = result["exec_res"]
         exec_err = result["exec_err"]
 
-        self.statistics.total[evaluation_for] = self.statistics.total.get(evaluation_for, 0) + 1
+        self.statistics.total[validation_for] = self.statistics.total.get(validation_for, 0) + 1
 
         if exec_res == 1:
-            if evaluation_for not in self.statistics.corrects:
-                self.statistics.corrects[evaluation_for] = []
-            self.statistics.corrects[evaluation_for].append((db_id, question_id))
+            if validation_for not in self.statistics.corrects:
+                self.statistics.corrects[validation_for] = []
+            self.statistics.corrects[validation_for].append((db_id, question_id))
         else:
             if exec_err == "incorrect answer":
-                if evaluation_for not in self.statistics.incorrects:
-                    self.statistics.incorrects[evaluation_for] = []
-                self.statistics.incorrects[evaluation_for].append((db_id, question_id))
+                if validation_for not in self.statistics.incorrects:
+                    self.statistics.incorrects[validation_for] = []
+                self.statistics.incorrects[validation_for].append((db_id, question_id))
             else:
-                if evaluation_for not in self.statistics.errors:
-                    self.statistics.errors[evaluation_for] = []
-                self.statistics.errors[evaluation_for].append((db_id, question_id, exec_err))
+                if validation_for not in self.statistics.errors:
+                    self.statistics.errors[validation_for] = []
+                self.statistics.errors[validation_for].append((db_id, question_id, exec_err))
 
     def dump_statistics_to_file(self):
         """

@@ -1,5 +1,6 @@
 import re
 import logging
+import random
 from typing import Dict, List, Optional
 
 from database_utils.execution import execute_sql
@@ -22,7 +23,7 @@ class DatabaseSchemaGenerator:
 
     def __init__(self, tentative_schema: Optional[DatabaseSchema] = None, schema_with_examples: Optional[DatabaseSchema] = None,
                  schema_with_descriptions: Optional[DatabaseSchema] = None, db_id: Optional[str] = None, db_path: Optional[str] = None,
-                 add_examples: bool = False):
+                 add_examples: bool = True):
         self.db_id = db_id
         self.db_path = db_path
         self.add_examples = add_examples
@@ -89,10 +90,35 @@ class DatabaseSchemaGenerator:
             db_path (str): The path to the database file.
         """
         db_schema = DatabaseSchema.from_schema_dict(get_db_schema(db_path))
-        schema_with_type = {
-            table_name: {col[1]: {"type": col[2]} for col in execute_sql(db_path, f"PRAGMA table_info(`{table_name}`)", fetch="all")}
-            for table_name in db_schema.tables.keys()
-        }
+        # schema_with_type = {
+        #     table_name: {col[1]: {"type": col[2]} for col in execute_sql(db_path, f"PRAGMA table_info(`{table_name}`)", fetch="all")}
+        #     for table_name in db_schema.tables.keys()
+        # }
+        schema_with_type = {}
+        for table_name in db_schema.tables.keys():
+            columns = execute_sql(db_path, f"PRAGMA table_info(`{table_name}`)", fetch="all")
+            schema_with_type[table_name] = {}
+            for col in columns:
+                schema_with_type[table_name][col[1]] = {"type": col[2]}
+                unique_values = execute_sql(db_path, f"SELECT COUNT(*) FROM (SELECT DISTINCT `{col[1]}` FROM `{table_name}` LIMIT 21) AS subquery;", "all", 480)
+                is_categorical = int(unique_values[0][0]) < 20
+                unique_values = None
+                if is_categorical:
+                    unique_values = execute_sql(db_path, f"SELECT DISTINCT `{col[1]}` FROM `{table_name}` WHERE `{col[1]}` IS NOT NULL")
+                schema_with_type[table_name][col[1]].update({"unique_values": unique_values})
+                try:
+                    value_statics_query = f"""
+                    SELECT 'Total count ' || COUNT(`{col[1]}`) || ' - Distinct count ' || COUNT(DISTINCT `{col[1]}`) || 
+                        ' - Null count ' || SUM(CASE WHEN `{col[1]}` IS NULL THEN 1 ELSE 0 END) AS counts  
+                    FROM (SELECT `{col[1]}` FROM `{table_name}` LIMIT 100000) AS limited_dataset;
+                    """
+                    value_statics = execute_sql(db_path, value_statics_query, "all", 480)
+                    schema_with_type[table_name][col[1]].update({
+                        "value_statics": str(value_statics[0][0]) if value_statics else None
+                    })
+                except Exception as e:
+                    print(f"An error occurred while fetching statistics for {col[1]} in {table_name}: {e}")
+                    schema_with_type[table_name][col[1]].update({"value_statics": None})
         db_schema.set_columns_info(schema_with_type)
         cls.CACHED_DB_SCHEMA[db_id] = db_schema
         cls._set_primary_keys(db_path, cls.CACHED_DB_SCHEMA[db_id])
@@ -122,12 +148,23 @@ class DatabaseSchemaGenerator:
         
         for table_name, table_schema in self.schema_structure.tables.items():
             for column_name, column_info in table_schema.columns.items():
+                if not column_info.examples:
+                    examples = DatabaseSchemaGenerator.CACHED_DB_SCHEMA[self.db_id].get_column_info(table_name, column_name).unique_values
+                    if examples:
+                        column_info.examples = [str(x[0]) for x in examples][:5]
+                
                 if (self.add_examples and not column_info.examples) or ((column_info.type.lower()) == "date" or ("date" in column_name.lower())):
                     example = execute_sql(db_path=self.db_path, 
-                                          sql=f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL", 
-                                          fetch="random") 
+                                          sql=f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL LIMIT 3", 
+                                          fetch="all") 
                     if example and len(str(example[0])) < 50:
                         column_info.examples = example
+                
+                if not column_info.value_statics:
+                    value_statics = DatabaseSchemaGenerator.CACHED_DB_SCHEMA[self.db_id].get_column_info(table_name, column_name).value_statics
+                    if value_statics:
+                        column_info.value_statics = value_statics
+                    
 
     def _load_column_descriptions(self) -> None:
         """
@@ -235,7 +272,7 @@ class DatabaseSchemaGenerator:
                     schema_structure_dict[table_name].append(column_name)
         return schema_structure_dict
     
-    def _get_example_column_name_description(self, table_name: str, column_name: str, include_value_description: bool = False) -> str:
+    def _get_example_column_name_description(self, table_name: str, column_name: str, include_value_description: bool = True) -> str:
         """
         Retrieves example values and descriptions for a column.
         
@@ -250,25 +287,30 @@ class DatabaseSchemaGenerator:
         example_part = ""
         name_string = ""
         description_string = ""
+        value_statics_string = ""
         value_description_string = ""
         
         column_info = self.schema_structure.get_column_info(table_name, column_name)
         if column_info:
             if column_info.examples:
-                example_part = f" examples: {', '.join([f'`{str(x)}`' for x in column_info.examples])}"
+                example_part = f" Example Values: {', '.join([f'`{str(x)}`' for x in column_info.examples])}"
+            if column_info.value_statics:
+                value_statics_string = f" Value Statics: {column_info.value_statics}"
             if column_info.column_name:
                 if (column_info.column_name.lower() != column_name.lower()) and (column_info.column_name.strip() != ""):
-                    name_string = f" `{column_info.column_name}`"
+                    name_string = f"| Column Name Meaning: {column_info.column_name}"
             if column_info.column_description:
-                description_string = f" description: {column_info.column_description}"
+                description_string = f"| Column Description: {column_info.column_description}"
             if column_info.value_description and include_value_description:
-                value_description_string = f" value description: {column_info.value_description}"
+                value_description_string = f"| Value Description: {column_info.value_description}"
         
-        description_part = f"{name_string}{description_string}{value_description_string}"
-        joint_string = f" --{example_part}|{description_part}" if example_part and description_part else f" --{example_part or description_part}"
+        description_part = f"{name_string} {description_string} {value_description_string}"
+        joint_string = f" --{example_part} |{value_statics_string} {description_part}" if example_part and description_part else f" --{example_part or description_part or value_statics_string}"
+        if joint_string == " --":
+            joint_string = ""
         return joint_string.replace("\n", " ") if joint_string else ""
 
-    def generate_schema_string(self, include_value_description: bool = False) -> str:
+    def generate_schema_string(self, include_value_description: bool = True, shuffle_cols: bool = True, shuffle_tables: bool = True) -> str:
         """
         Generates a schema string with descriptions and examples.
         
@@ -279,6 +321,11 @@ class DatabaseSchemaGenerator:
             str: The generated schema string.
         """
         ddl_commands = self._extract_create_ddl_commands()
+        if shuffle_tables:
+            ddl_tables = list(ddl_commands.keys())
+            random.shuffle(ddl_tables)
+            ddl_commands = {table_name: ddl_commands[table_name] for table_name in ddl_tables}
+            # ddl_commands = dict(random.sample(ddl_commands.items(), len(ddl_commands)))
         for table_name, ddl_command in ddl_commands.items():
             ddl_command = re.sub(r'\s+', ' ', ddl_command.strip())
             create_table_match = re.match(r'CREATE TABLE "?`?([\w -]+)`?"?\s*\((.*)\)', ddl_command, re.DOTALL)
@@ -289,6 +336,8 @@ class DatabaseSchemaGenerator:
             targeted_columns = self.schema_structure.tables[table_name].columns
             schema_lines = [f"CREATE TABLE {table_name}", "("]
             definitions = DatabaseSchemaGenerator._separate_column_definitions(column_definitions)
+            if shuffle_cols:
+                definitions = random.sample(definitions, len(definitions))
             for column_def in definitions:
                 column_def = column_def.strip()
                 if any(keyword in column_def.lower() for keyword in ["foreign key", "primary key"]):

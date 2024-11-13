@@ -40,14 +40,17 @@ def _get_unique_values(db_path: str) -> Dict[str, Dict[str, List[str]]]:
             if any(keyword in column.lower() for keyword in ["_id", " id", "url", "email", "web", "time", "phone", "date", "address"]) or column.endswith("Id"):
                 continue
 
-            result = execute_sql(db_path, f"""
-                SELECT SUM(LENGTH(unique_values)), COUNT(unique_values)
-                FROM (
-                    SELECT DISTINCT `{column}` AS unique_values
-                    FROM `{table_name}`
-                    WHERE `{column}` IS NOT NULL
-                ) AS subquery
-            """, fetch="one")
+            try:
+                result = execute_sql(db_path, f"""
+                    SELECT SUM(LENGTH(unique_values)), COUNT(unique_values)
+                    FROM (
+                        SELECT DISTINCT `{column}` AS unique_values
+                        FROM `{table_name}`
+                        WHERE `{column}` IS NOT NULL
+                    ) AS subquery
+                """, fetch="one", timeout = 480)
+            except:
+                result = 0, 0
 
             sum_of_lengths, count_distinct = result
             if sum_of_lengths is None or count_distinct == 0:
@@ -56,9 +59,12 @@ def _get_unique_values(db_path: str) -> Dict[str, Dict[str, List[str]]]:
             average_length = sum_of_lengths / count_distinct
             logging.info(f"Column: {column}, sum_of_lengths: {sum_of_lengths}, count_distinct: {count_distinct}, average_length: {average_length}")
             
-            if ("name" in column.lower() and sum_of_lengths < 5000000) or (sum_of_lengths < 2000000 and average_length < 25):
+            if ("name" in column.lower() and sum_of_lengths < 5000000) or (sum_of_lengths < 2000000 and average_length < 25) or count_distinct < 100:
                 logging.info(f"Fetching distinct values for {column}")
-                values = [str(value[0]) for value in execute_sql(db_path, f"SELECT DISTINCT `{column}` FROM `{table_name}` WHERE `{column}` IS NOT NULL", fetch="all")]
+                try:
+                    values = [str(value[0]) for value in execute_sql(db_path, f"SELECT DISTINCT `{column}` FROM `{table_name}` WHERE `{column}` IS NOT NULL", fetch="all", timeout = 480)]
+                except:
+                    values = []
                 logging.info(f"Number of different values: {len(values)}")
                 table_values[column] = values
         
@@ -124,6 +130,10 @@ def make_lsh(unique_values: Dict[str, Dict[str, List[str]]], signature_size: int
         
         for table_name, table_values in unique_values.items():
             for column_name, column_values in table_values.items():
+                if column_name.lower() == "doctype":
+                    print("="*20)
+                    print("Doctype found")
+                    print("="*20)
                 logging.info(f"Processing {table_name} - {column_name} - {len(column_values)}")
                 
                 for id, value in enumerate(column_values):

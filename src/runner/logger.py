@@ -4,6 +4,8 @@ from threading import Lock
 from pathlib import Path
 from typing import Any, List, Dict, Union
 
+from runner.task import Task
+
 class Logger:
     _instance = None
     _lock = Lock()
@@ -44,6 +46,7 @@ class Logger:
         self.db_id = db_id
         self.question_id = question_id
         self.result_directory = Path(result_directory)
+        self.log_file_lock = Lock()
 
     def _set_log_level(self, log_level: str):
         """
@@ -60,7 +63,7 @@ class Logger:
             raise ValueError(f"Invalid log level: {log_level}")
         logging.basicConfig(level=log_level_attr, format='%(levelname)s: %(message)s')
 
-    def log(self, message: str, log_level: str = "info"):
+    def log(self, message: str, log_level: str = "info", task: Task = None):
         """
         Logs a message at the specified log level.
 
@@ -74,29 +77,33 @@ class Logger:
         log_method = getattr(logging, log_level, None)
         if log_method is None:
             raise ValueError(f"Invalid log level: {log_level}")
-        log_method(message)
+        if task is not None:
+            log_method(f"({task.db_id}, {task.question_id}) {message}")
+        else:
+            log_method(message)
 
-    def log_conversation(self, text: Union[str, List[Any], Dict[str, Any], bool], _from: str, step: int):
+    def log_conversation(self, conversations: List[Dict[str, Any]]):
         """
-        Logs a conversation text to a file.
+        Logs conversations to a file.
 
         Args:
-            text (Union[str, List[Any], Dict[str, Any], bool]): The conversation text to log.
-            _from (str): The source of the text.
-            step (int): The step number.
+            conversations (List[Dict[str, Any]]): The conversations to log.
         """
-        log_file_path = self.result_directory / "logs" / f"{self.question_id}_{self.db_id}.log"
-        log_file_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_file_path.open("a") as file:
-            file.write(f"############################## {_from} at step {step} ##############################\n\n")
-            if isinstance(text, str):
-                file.write(text)
-            elif isinstance(text, (list, dict)):
-                formatted_text = json.dumps(text, indent=4)
-                file.write(formatted_text)
-            elif isinstance(text, bool):
-                file.write(str(text))
-            file.write("\n\n")
+        with self.log_file_lock:
+            log_file_path = self.result_directory / "logs" / f"{self.question_id}_{self.db_id}.log"
+            log_file_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_file_path.open("a") as file:
+                for conversation in conversations:
+                    text = conversation["text"]
+                    file.write(f"############################## {conversation['from']} at step {conversation['step']} ##############################\n\n")
+                    if isinstance(text, str):
+                        file.write(text)
+                    elif isinstance(text, (list, dict)):
+                        formatted_text = json.dumps(text, indent=4)
+                        file.write(formatted_text)
+                    elif isinstance(text, bool):
+                        file.write(str(text))
+                    file.write("\n\n")
 
     def dump_history_to_file(self, execution_history: List[Dict[str, Any]]):
         """

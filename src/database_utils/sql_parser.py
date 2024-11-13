@@ -1,11 +1,23 @@
 import logging
+import sqlvalidator
 from typing import Dict, List, Optional
+from func_timeout import func_timeout, FunctionTimedOut
 
 from sqlglot import parse_one, exp
 from sqlglot.optimizer.qualify import qualify
 
 from database_utils.execution import execute_sql
 from database_utils.db_info import get_table_all_columns, get_db_all_tables
+
+def format_sql_query(query, meta_time_out = 10):
+    try:
+        return func_timeout(meta_time_out, sqlvalidator.format_sql, args=(query))
+    except FunctionTimedOut:
+        print(f"Timeout in format_sql_query: {query}")
+        return query
+    except Exception:
+        return query
+
 
 def get_sql_tables(db_path: str, sql: str) -> List[str]:
     """
@@ -104,38 +116,38 @@ def get_sql_columns_dict(db_path: str, sql: str) -> Dict[str, List[str]]:
 
     return columns_dict
 
-def get_sql_condition_literals(db_path: str, sql: str) -> Dict[str, Dict[str, List[str]]]:
-    """
-    Retrieves literals used in SQL query conditions.
+# def get_sql_condition_literals(db_path: str, sql: str) -> Dict[str, Dict[str, List[str]]]:
+#     """
+#     Retrieves literals used in SQL query conditions.
     
-    Args:
-        db_path (str): Path to the database file.
-        sql (str): The SQL query string.
+#     Args:
+#         db_path (str): Path to the database file.
+#         sql (str): The SQL query string.
         
-    Returns:
-        Dict[str, Dict[str, List[str]]]: Dictionary of tables and their columns with condition literals.
-    """
-    try:
-        columns_dict = get_sql_columns_dict(db_path, sql)
-        used_entities = {}
-        for where_exp in parse_one(sql, read="sqlite").find_all(exp.Where):
-            for literal in where_exp.find_all(exp.Literal):
-                if literal == literal.parent.expression:
-                    for column_exp in literal.parent.find_all(exp.Column):
-                        column_name = column_exp.name
-                        table_name = next(
-                            (table for table, columns in columns_dict.items() if column_name.lower() in [c.lower() for c in columns]), None)
-                        if table_name:
-                            if table_name not in used_entities:
-                                used_entities[table_name] = {}
-                            if column_name not in used_entities[table_name]:
-                                used_entities[table_name][column_name] = []
-                            if literal.this not in used_entities[table_name][column_name]:
-                                used_entities[table_name][column_name].append(literal.this)
-        return used_entities
-    except Exception as e:
-        logging.critical(f"Error in get_sql_condition_literals: {e}\nSQL: {sql}")
-        raise e
+#     Returns:
+#         Dict[str, Dict[str, List[str]]]: Dictionary of tables and their columns with condition literals.
+#     """
+#     try:
+#         columns_dict = get_sql_columns_dict(db_path, sql)
+#         used_entities = {}
+#         for where_exp in parse_one(sql, read="sqlite").find_all(exp.Where):
+#             for literal in where_exp.find_all(exp.Literal):
+#                 if literal == literal.parent.expression:
+#                     for column_exp in literal.parent.find_all(exp.Column):
+#                         column_name = column_exp.name
+#                         table_name = next(
+#                             (table for table, columns in columns_dict.items() if column_name.lower() in [c.lower() for c in columns]), None)
+#                         if table_name:
+#                             if table_name not in used_entities:
+#                                 used_entities[table_name] = {}
+#                             if column_name not in used_entities[table_name]:
+#                                 used_entities[table_name][column_name] = []
+#                             if literal.this not in used_entities[table_name][column_name]:
+#                                 used_entities[table_name][column_name].append(literal.this)
+#         return used_entities
+#     except Exception as e:
+#         logging.critical(f"Error in get_sql_condition_literals: {e}\nSQL: {sql}")
+#         raise e
 
 def _check_value_exists(db_path: str, table_name: str, column_name: str, value: str) -> Optional[str]:
     """
@@ -150,7 +162,7 @@ def _check_value_exists(db_path: str, table_name: str, column_name: str, value: 
     Returns:
         Optional[str]: The value if it exists, otherwise None.
     """
-    query = f"SELECT {column_name} FROM {table_name} WHERE {column_name} LIKE '%{value}%' LIMIT 1"
+    query = f"SELECT `{column_name}` FROM `{table_name}` WHERE `{column_name}` LIKE '%{value}%' LIMIT 1"
     result = execute_sql(db_path, query, "one")
     return result[0] if result else None
 

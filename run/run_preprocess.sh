@@ -1,5 +1,6 @@
 # Define variables
-db_root_directory="/data/dev_databases" # UPDATE THIS WITH THE PATH TO THE PARENT DIRECTORY OF THE DATABASES
+source .env
+db_root_directory=$DB_ROOT_DIRECTORY # UPDATE THIS WITH THE PATH TO THE PARENT DIRECTORY OF THE DATABASES
 db_id="all" # Options: all or a specific db_id
 verbose=true
 signature_size=100

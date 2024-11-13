@@ -29,6 +29,8 @@ class ColumnInfo:
     primary_key: bool = False
     foreign_keys: List[Tuple[str, str]] = field(default_factory=list)
     referenced_by: List[Tuple[str, str]] = field(default_factory=list)
+    unique_values: List[str] = field(default_factory=list)
+    value_statics: str = ""
 
 def set_field(column_info: ColumnInfo, field_name: str, value: Any) -> None:
     """
@@ -215,12 +217,12 @@ class DatabaseSchema:
         for table_name, columns_info in schema_with_info.items():
             table_info = self.get_table_info(table_name)
             if table_info is None:
-                logging.warning(f"Table {table_name} not found in the schema")
+                # logging.warning(f"Table {table_name} not found in the schema")
                 continue
             for column_name, info in columns_info.items():
                 actual_name = self.get_actual_column_name(table_name, column_name)
                 if actual_name is None:
-                    logging.warning(f"Column {column_name} not found in table {table_name}")
+                    # logging.warning(f"Column {column_name} not found in table {table_name}")
                     continue
                 schema_column_info = table_info.columns[actual_name]
                 for field_name, value in info.items():
@@ -240,13 +242,13 @@ class DatabaseSchema:
         for table_name, table_info in selected_database_schema.tables.items():
             actual_table_name = self.get_actual_table_name(table_name)
             if actual_table_name is None:
-                logging.warning(f"Table {table_name} not found in the schema")
+                # logging.warning(f"Table {table_name} not found in the schema")
                 continue
             new_table_info = TableSchema()
             for column_name, column_info in table_info.columns.items():
                 actual_column_name = self.get_actual_column_name(table_name, column_name)
                 if actual_column_name is None:
-                    logging.warning(f"Column {column_name} not found in table {table_name}")
+                    # logging.warning(f"Column {column_name} not found in table {table_name}")
                     continue
                 new_table_info.columns[actual_column_name] = column_info
             new_schema.tables[actual_table_name] = new_table_info

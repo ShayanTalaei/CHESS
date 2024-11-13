@@ -1,5 +1,7 @@
 import argparse
+import yaml
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -15,23 +17,16 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the pipeline with the specified configuration.")
     parser.add_argument('--data_mode', type=str, required=True, help="Mode of the data to be processed.")
     parser.add_argument('--data_path', type=str, required=True, help="Path to the data file.")
-    parser.add_argument('--pipeline_nodes', type=str, required=True, help="Pipeline nodes configuration.")
-    parser.add_argument('--pipeline_setup', type=str, required=True, help="Pipeline setup in JSON format.")
-    parser.add_argument('--use_checkpoint', action='store_true', help="Flag to use checkpointing.")
-    parser.add_argument('--checkpoint_nodes', type=str, required=False, help="Checkpoint nodes configuration.")
-    parser.add_argument('--checkpoint_dir', type=str, required=False, help="Directory for checkpoints.")
+    parser.add_argument('--config', type=str, required=True, help="Path to the configuration file.")
+    parser.add_argument('--num_workers', type=int, default=1, help="Number of workers to use.")
     parser.add_argument('--log_level', type=str, default='warning', help="Logging level.")
+    parser.add_argument('--pick_final_sql', type=bool, default=False, help="Pick the final SQL from the generated SQLs.")
     args = parser.parse_args()
 
-    args.run_start_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    args.run_start_time = datetime.now().isoformat()
+    with open(args.config, 'r') as file:
+        args.config=yaml.safe_load(file)
     
-    if args.use_checkpoint:
-        print('Using checkpoint')
-        if not args.checkpoint_nodes:
-            raise ValueError('Please provide the checkpoint nodes to use checkpoint')
-        if not args.checkpoint_dir:
-            raise ValueError('Please provide the checkpoint path to use checkpoint')
-
     return args
 
 def load_dataset(data_path: str) -> List[Dict[str, Any]]:

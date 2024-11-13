@@ -3,15 +3,16 @@ import json
 from pathlib import Path
 from multiprocessing import Pool
 from typing import List, Dict, Any, Tuple
+from langgraph.graph import StateGraph
 
 from runner.logger import Logger
 from runner.task import Task
 from runner.database_manager import DatabaseManager
 from runner.statistics_manager import StatisticsManager
-from pipeline.workflow_builder import build_pipeline
-from pipeline.pipeline_manager import PipelineManager
-
-NUM_WORKERS = 11
+from workflow.team_builder import build_team
+from database_utils.execution import ExecutionStatus
+from workflow.system_state import SystemState
+import fcntl
 
 class RunManager:
     RESULT_ROOT_PATH = "results"
@@ -32,21 +33,43 @@ class RunManager:
             str: The path to the result directory.
         """
         data_mode = self.args.data_mode
-        pipeline_nodes = self.args.pipeline_nodes
+        setting_name = self.args.config["setting_name"]
         dataset_name = Path(self.args.data_path).stem
         run_folder_name = str(self.args.run_start_time)
-        run_folder_path = Path(self.RESULT_ROOT_PATH) / data_mode / pipeline_nodes / dataset_name / run_folder_name
+        run_folder_path = Path(self.RESULT_ROOT_PATH) / data_mode / setting_name / dataset_name / run_folder_name
         
         run_folder_path.mkdir(parents=True, exist_ok=True)
         
         arg_file_path = run_folder_path / "-args.json"
         with arg_file_path.open('w') as file:
             json.dump(vars(self.args), file, indent=4)
+
+        final_prediction_file = run_folder_path / "-predictions.json"
+        with final_prediction_file.open('w') as file:
+            json.dump({}, file, indent=4)
         
         log_folder_path = run_folder_path / "logs"
         log_folder_path.mkdir(exist_ok=True)
         
         return str(run_folder_path)
+    
+    def update_final_predictions(self, question_id: int, final_sql: str = None, db_id: int = None):
+        results = {}
+        if final_sql:
+            temp_results = {str(question_id): final_sql.strip() + "\t----- bird -----\t" + db_id}
+        else:
+            temp_results = {str(question_id): 0}
+        file_path = os.path.join(self.result_directory, "-predictions.json")
+        with open(file_path, 'r+') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                results = json.load(f)
+                results.update(temp_results)
+                f.seek(0)
+                json.dump(results, f, indent=4)
+                f.truncate()
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
 
     def initialize_tasks(self, dataset: List[Dict[str, Any]]):
         """
@@ -58,18 +81,25 @@ class RunManager:
         for i, data in enumerate(dataset):
             if "question_id" not in data:
                 data = {"question_id": i, **data}
-            task = Task(data)
+            self.update_final_predictions(data["question_id"])
+            task = Task(**data)
             self.tasks.append(task)
         self.total_number_of_tasks = len(self.tasks)
         print(f"Total number of tasks: {self.total_number_of_tasks}")
 
     def run_tasks(self):
         """Runs the tasks using a pool of workers."""
-        with Pool(NUM_WORKERS) as pool:
+        print(f"Running tasks with {self.args.num_workers} workers.")
+        if self.args.num_workers > 1:
+            with Pool(self.args.num_workers) as pool:
+                for task in self.tasks:
+                    pool.apply_async(self.worker, args=(task,), callback=self.task_done)
+                pool.close()
+                pool.join()
+        else:
             for task in self.tasks:
-                pool.apply_async(self.worker, args=(task,), callback=self.task_done)
-            pool.close()
-            pool.join()
+                log = self.worker(task)
+                self.task_done(log)
 
     def worker(self, task: Task) -> Tuple[Any, str, int]:
         """
@@ -81,24 +111,86 @@ class RunManager:
         Returns:
             tuple: The state of the task processing and task identifiers.
         """
-        database_manager = DatabaseManager(db_mode=self.args.data_mode, db_id=task.db_id)
+        print(f"Initializing task: {task.db_id} {task.question_id}")
+        DatabaseManager(db_mode=self.args.data_mode, db_id=task.db_id)
         logger = Logger(db_id=task.db_id, question_id=task.question_id, result_directory=self.result_directory)
         logger._set_log_level(self.args.log_level)
         logger.log(f"Processing task: {task.db_id} {task.question_id}", "info")
-        pipeline_manager = PipelineManager(json.loads(self.args.pipeline_setup))
-        try:
-            tentative_schema, execution_history = self.load_checkpoint(task.db_id, task.question_id)
-            initial_state = {"keys": {"task": task, 
-                                      "tentative_schema": tentative_schema, "execution_history": execution_history}}
-            self.app = build_pipeline(self.args.pipeline_nodes)
-            for state in self.app.stream(initial_state):
-                continue
-            return state['__end__'], task.db_id, task.question_id
-        except Exception as e:
-            logger.log(f"Error processing task: {task.db_id} {task.question_id}\n{e}", "error")
-            return None, task.db_id, task.question_id
 
-    def task_done(self, log: Tuple[Any, str, int]):
+        team = build_team(self.args.config)
+        thread_id = f"{self.args.run_start_time}_{task.db_id}_{task.question_id}"
+        thread_config = {"configurable": {"thread_id": thread_id}}
+        state_values =  SystemState(task=task, 
+                                    tentative_schema=DatabaseManager().get_db_schema(), 
+                                    execution_history=[])
+        thread_config["recursion_limit"] = 50
+        for state_dict in team.stream(state_values, thread_config, stream_mode="values"):
+            logger.log("________________________________________________________________________________________")
+            continue
+        system_state = SystemState(**state_dict)
+        return system_state, task.db_id, task.question_id
+
+    def pick_final_sql(self, state: SystemState):
+        """
+        Picks the final SQL query from the execution history.
+        
+        Args:
+            state (SystemState): The system state after processing the task.
+        
+        Returns:
+            
+        """
+        execution_history = state.execution_history
+        final_sql = ""
+        final_sql_execution_status = None
+        generated_at_step = None
+        for step in execution_history:
+            if step["tool_name"] == "generate_candidate":
+                sql = step["candidates"][0]["SQL"]
+                sql_id = "generate_candidate"
+            elif "revise" in step["tool_name"]:
+                sql = step["SQL"]
+                sql_id = step["tool_name"]
+            else:
+                continue
+            execution_status = DatabaseManager().get_execution_status(sql=sql)
+            if not final_sql:
+                final_sql = sql
+                final_sql_execution_status = execution_status
+                generated_at_step = sql_id
+            else:
+                if execution_status == ExecutionStatus.SYNTACTICALLY_CORRECT:
+                    final_sql = sql
+                    final_sql_execution_status = execution_status
+                    generated_at_step = sql_id
+                else:
+                    if final_sql_execution_status != ExecutionStatus.SYNTACTICALLY_CORRECT:
+                        if execution_status == ExecutionStatus.ZERO_COUNT_RESULT:
+                            final_sql = sql
+                            final_sql_execution_status = execution_status
+                            generated_at_step = sql_id
+        final_validation_result = {
+            "final_sql": {
+                "SQL": final_sql,
+                "EXECUTION_STATUS": final_sql_execution_status.value,
+                "GENERATED_AT_STEP": generated_at_step
+            }
+        }
+        if execution_history[-1]["tool_name"] == "evaluation":
+            final_validation_result = {
+                "final_sql": {
+                    **execution_history[-1][generated_at_step],
+                    "EXECUTION_STATUS": final_sql_execution_status.value,
+                    "GENERATED_AT_STEP": generated_at_step
+                }
+            }
+            final_validation_result["final_sql"]["SQL"] = final_validation_result["final_sql"].pop("PREDICTED_SQL")
+            
+        
+        state.execution_history.append(final_validation_result)
+        Logger().dump_history_to_file(state.execution_history)
+
+    def task_done(self, log: Tuple[SystemState, str, int]):
         """
         Callback function when a task is done.
         
@@ -108,13 +200,18 @@ class RunManager:
         state, db_id, question_id = log
         if state is None:
             return
-        evaluation_result = state["keys"]['execution_history'][-1]
-        if evaluation_result.get("node_type") == "evaluation":
-            for evaluation_for, result in evaluation_result.items():
-                if evaluation_for in ['node_type', 'status']:
-                    continue
-                self.statistics_manager.update_stats(db_id, question_id, evaluation_for, result)
-            self.statistics_manager.dump_statistics_to_file()
+        for step in state.execution_history:
+            if "tool_name" in step and step["tool_name"] == "evaluation":
+                validation_result = step
+                if validation_result.get("tool_name") == "evaluation":
+                    for validation_for, result in validation_result.items():
+                        if not isinstance(result, dict):
+                            continue
+                        self.statistics_manager.update_stats(db_id, question_id, validation_for, result)
+            if "final_SQL" in step:
+                self.statistics_manager.update_stats(db_id, question_id, "final_SQL", step["final_SQL"])
+                self.update_final_predictions(question_id, step["final_SQL"]["PREDICTED_SQL"], db_id)
+        self.statistics_manager.dump_statistics_to_file()
         self.processed_tasks += 1
         self.plot_progress()
 
@@ -130,24 +227,6 @@ class RunManager:
         print('\x1b[1A' + '\x1b[2K' + '\x1b[1A')  # Clear previous line
         print(f"[{'=' * progress_length}>{' ' * (bar_length - progress_length)}] {self.processed_tasks}/{self.total_number_of_tasks}")
 
-    def load_checkpoint(self, db_id, question_id) -> Dict[str, List[str]]:
-        tentative_schema = DatabaseManager().get_db_schema()
-        execution_history = []
-        if self.args.use_checkpoint:
-            checkpoint_file = Path(self.args.checkpoint_dir) / f"{question_id}_{db_id}.json"
-            if checkpoint_file.exists():
-                with checkpoint_file.open('r') as file:
-                    checkpoint = json.load(file)
-                    for step in checkpoint:
-                        node_type = step["node_type"]
-                        if node_type in self.args.checkpoint_nodes:
-                            execution_history.append(step)
-                        if "tentative_schema" in step:
-                            tentative_schema = step["tentative_schema"]
-            else:
-                Logger().log(f"Checkpoint file not found: {checkpoint_file}", "warning")
-        return tentative_schema, execution_history
-
     def generate_sql_files(self):
         """Generates SQL files from the execution history."""
         sqls = {}
@@ -161,10 +240,10 @@ class RunManager:
                     exec_history = json.load(f)
                     for step in exec_history:
                         if "SQL" in step:
-                            node_type = step["node_type"]
-                            if node_type not in sqls:
-                                sqls[node_type] = {}
-                            sqls[node_type][question_id] = step["SQL"]
+                            tool_name = step["tool_name"]
+                            if tool_name not in sqls:
+                                sqls[tool_name] = {}
+                            sqls[tool_name][question_id] = step["SQL"]
         for key, value in sqls.items():
             with open(os.path.join(self.result_directory, f"-{key}.json"), 'w') as f:
                 json.dump(value, f, indent=4)

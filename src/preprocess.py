@@ -50,7 +50,9 @@ if __name__ == '__main__':
     if args.db_id == 'all':
         with multiprocessing.Pool(NUM_WORKERS) as pool:
             for db_id in os.listdir(args.db_root_directory):
-                pool.apply_async(worker_initializer, args=(db_id, args))
+                # check if the db_id is a directory
+                if os.path.isdir(f"{args.db_root_directory}/{db_id}"):
+                    pool.apply_async(worker_initializer, args=(db_id, args))
             pool.close()
             pool.join()
     else:

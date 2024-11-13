@@ -1,0 +1,42 @@
+** Instructions: **
+
+Given the following question database schema, and candidate responses, generate a set of {UNIT_TEST_CAP} unit tests that would evaluate the correctness of SQL queries that would answer the question.
+Unit tests should be designed in a way that distinguish the candidate responses from each other.
+
+- The unit tests should cover various aspects of the question and ensure comprehensive evaluation. 
+- Each unit test should be clearly stated and should include the expected outcome.
+- Each unit test should be designed in a way that it can distinguishes at lease two candidate responses from each other.
+- The unit test should be formatted like 'The answer SQL query should mention...', 'The answer SQL query should state...', 'The answer SQL query should use...', etc. followed by the expected outcome.
+- First think step by step how you can design the units tests to distinguish the candidate responses using the <Thinking> tags.
+- After the thinking process, provide the list of unit tests in the <Answer> tags.
+
+VERY IMPORTANT:
+All of the unit tests should consider the logic of the SQL query do not consider the formatting of the output or output values.
+
+You are provided with different clusters of the canidate responses. Each cluster contains similar responses based on their results.
+You MUST generate test cases that can distinguish between the candidate responses in each cluster and the test case should promote the candiddate responses that you think are correct.
+
+
+Example of the output format:
+<Thinking> Your step by step reasoning here. </Thinking>
+<Answer>
+['The answer SQL query should mention...', 'The answer SQL query should state...', 'The answer SQL query should use...']
+</Answer>
+
+** Question: **
+Question: {QUESTION} (Hint: {HINT})
+
+** Database Schema: **
+{DATABASE_SCHEMA}
+
+** Candidate Clusters: **
+{CANDIDATE_QUERIES}
+
+** Question: **
+Question: {QUESTION} (Hint: {HINT})
+
+** Output Format: **
+<Thinking> Your step by step reasoning here. </Thinking>
+<Answer>
+output should be only a list of strings (e.g. ['unit test #1', 'unit test #2', 'unit test #3']).
+</Answer>

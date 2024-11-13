@@ -1,0 +1,12 @@
+DB_ROOT_PATH="./data/dev" # this directory should be the parent of test_databases
+DATA_MODE="dev"
+DATA_PATH="./data/dev/dev.json"
+DB_ROOT_DIRECTORY="./data/dev/dev_databases"
+DATA_TABLES_PATH="./data/dev/dev_tables.json"
+
+
+OPENAI_API_KEY=
+GCP_PROJECT=''
+GCP_REGION='us-central1'
+GCP_CREDENTIALS=''
+GOOGLE_CLOUD_PROJECT=''

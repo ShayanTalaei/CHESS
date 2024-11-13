@@ -1,0 +1,39 @@
+** Instructions: **
+Given the following question, database schema, a candidate SQL query response, and unit tests, evaluate whether or not the response passes each unit test.
+
+- In your evaluation, you should consider how the responses align with the a given unit test.
+- Provide reasoning before you return your evaluation inside the <Thinking> tags.
+- At the end of your evaluation, you must finish with a list of verdicts corresponding to each candidate responses in <Answer> and </Answer> tags.
+- You must include a verdict with one of these formatted options: '[Passed]' or '[Failed]'
+- Here is an example of the output format:
+<Thinking> Your step by step reasoning here. </Thinking>
+<Answer>
+Candidate Response #1: [Passed]
+Candidate Response #2: [Failed]
+Candidate Response #3: [Passed]
+....
+</Answer>
+- Each verdict should be on a new line and correspond to the candidate response in the same order as they are provided.
+- Here is the question, database schema, candidate responses, and the unit test to evaluate the responses:
+"""
+
+** Database Schema: **
+{DATABASE_SCHEMA}
+
+** Question: **π
+Question: {QUESTION} (Hint: {HINT})
+
+** Candidate SQL Queries: **
+{CANDIDATE_RESPONSES}
+
+** Unit Test: **
+{UNIT_TEST}
+
+** Output Format: **
+<Thinking> Your step by step reasoning here. </Thinking>
+<Answer>
+Candidate Response #1: [Passed]
+Candidate Response #2: [Failed]
+Candidate Response #3: [Passed]
+...
+</Answer>

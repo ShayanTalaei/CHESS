@@ -46,7 +46,7 @@ def load_db_lsh(db_directory_path: str) -> Tuple[MinHashLSH, Dict[str, Tuple[Min
         raise e
 
 def query_lsh(lsh: MinHashLSH, minhashes: Dict[str, Tuple[MinHash, str, str, str]], keyword: str, 
-              signature_size: int = 20, n_gram: int = 3, top_n: int = 10) -> Dict[str, Dict[str, List[str]]]:
+              signature_size: int = 100, n_gram: int = 3, top_n: int = 10) -> Dict[str, Dict[str, List[str]]]:
     """
     Queries the LSH for similar values to the given keyword and returns the top results.
 
@@ -63,7 +63,6 @@ def query_lsh(lsh: MinHashLSH, minhashes: Dict[str, Tuple[MinHash, str, str, str
     """
     query_minhash = _create_minhash(signature_size, keyword, n_gram)
     results = lsh.query(query_minhash)
-
     similarities = [(result, _jaccard_similarity(query_minhash, minhashes[result][0])) for result in results]
     similarities = sorted(similarities, key=lambda x: x[1], reverse=True)[:top_n]
 
