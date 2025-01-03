@@ -8,6 +8,7 @@ from workflow.system_state import SystemState
 from workflow.sql_meta_info import SQLMetaInfo
 from workflow.agents.tool import Tool
 
+
 class GenerateCandidate(Tool):
     """
     Tool for generating candidate SQL queries based on the task's question and evidence.
@@ -20,8 +21,7 @@ class GenerateCandidate(Tool):
         sampling_count: int
         input_file_path: str = None
 
-    def __init__(self,
-                generator_configs: list[Dict]):
+    def __init__(self, generator_configs: list[Dict]):
         super().__init__()
         self.generator_configs = [self.GeneratorConfig(**config) for config in generator_configs]
         self.generators_queries = {}
@@ -30,7 +30,7 @@ class GenerateCandidate(Tool):
     def _run(self, state: SystemState):
         """
         Executes the candidate generation process.
-        
+
         Args:
             state (SystemState): The current system state.
         """
@@ -38,7 +38,10 @@ class GenerateCandidate(Tool):
         for generator_config in self.generator_configs:
             self.generators_queries[generator_config.template_name] = []
         for generator_config in self.generator_configs:
-            if self.next_generator_to_use != "ALL" and generator_config.template_name != self.next_generator_to_use:
+            if (
+                self.next_generator_to_use != "ALL"
+                and generator_config.template_name != self.next_generator_to_use
+            ):
                 continue
             request_list = []
             for i in range(generator_config.sampling_count):
@@ -50,9 +53,12 @@ class GenerateCandidate(Tool):
                     }
                     request_list.append(request_kwargs)
                 except Exception as e:
-                    print(f"Error in creating request_kwargs for generator {generator_config.template_name}: {e}")
+                    print(
+                        "Error in creating request_kwargs for generator"
+                        f" {generator_config.template_name}: {e}"
+                    )
                     continue
-            
+
             try:
                 response = async_llm_chain_call(
                     prompt=get_prompt(template_name=generator_config.template_name),
@@ -63,7 +69,10 @@ class GenerateCandidate(Tool):
                 )
                 response = [res for sublist in response for res in sublist]
             except Exception as e:
-                print(f"Error in generating SQL queries for generator {generator_config.template_name}: {e}")
+                print(
+                    "Error in generating SQL queries for generator"
+                    f" {generator_config.template_name}: {e}"
+                )
                 continue
             for res in response:
                 if not res:
@@ -73,12 +82,17 @@ class GenerateCandidate(Tool):
                     # state.SQL_meta_infos[self.tool_name].append(sql_meta_info)
                     self.generators_queries[generator_config.template_name].append(sql_meta_info)
                 except Exception as e:
-                    print(f"Error in creating SQLMetaInfo for generator {generator_config.template_name}: {e}")
+                    print(
+                        "Error in creating SQLMetaInfo for generator"
+                        f" {generator_config.template_name}: {e}"
+                    )
                     continue
             request_list = []
         for generator_config in self.generator_configs:
             if len(self.generators_queries[generator_config.template_name]) > 0:
-                state.SQL_meta_infos[self.tool_name] += self.generators_queries[generator_config.template_name]
+                state.SQL_meta_infos[self.tool_name] += self.generators_queries[
+                    generator_config.template_name
+                ]
 
     def _get_updates(self, state: SystemState) -> Dict:
         SQL_meta_infos = state.SQL_meta_infos[self.tool_name]
@@ -89,15 +103,24 @@ class GenerateCandidate(Tool):
                 candidates.append({
                     "chain_of_thought_reasoning": SQL_meta_info.chain_of_thought_reasoning,
                     "SQL": SQL_meta_info.SQL,
-                    "plan": SQL_meta_info.plan
+                    "plan": SQL_meta_info.plan,
                 })
             else:
                 candidates.append({
                     "chain_of_thought_reasoning": SQL_meta_info.chain_of_thought_reasoning,
-                    "SQL": SQL_meta_info.SQL
+                    "SQL": SQL_meta_info.SQL,
                 })
         return {
             "node_type": self.tool_name,
-            "generation_based_candidates": [{"template_name": generator_config.template_name, "candidates": [candidate.SQL for candidate in self.generators_queries[generator_config.template_name]]} for generator_config in self.generator_configs],
-            "candidates": candidates
+            "generation_based_candidates": [
+                {
+                    "template_name": generator_config.template_name,
+                    "candidates": [
+                        candidate.SQL
+                        for candidate in self.generators_queries[generator_config.template_name]
+                    ],
+                }
+                for generator_config in self.generator_configs
+            ],
+            "candidates": candidates,
         }

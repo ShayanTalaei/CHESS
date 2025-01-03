@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class RetrieveContext(Tool):
     """
     Tool for retrieving context information based on the task's question and evidence.
@@ -20,22 +21,22 @@ class RetrieveContext(Tool):
     def __init__(self, top_k: int):
         super().__init__()
         self.top_k = top_k
-        
+
     def _run(self, state: SystemState):
         """
         Executes the context retrieval process.
-        
+
         Args:
             state (SystemState): The current system state.
         """
-        
+
         retrieved_columns = self._find_most_similar_columns(
             question=state.task.question,
             evidence=state.task.evidence,
             keywords=state.keywords,
-            top_k=self.top_k
+            top_k=self.top_k,
         )
-        
+
         state.schema_with_descriptions = self._format_retrieved_descriptions(retrieved_columns)
 
         # try:
@@ -46,8 +47,10 @@ class RetrieveContext(Tool):
         #     state.schema_with_descriptions = {}
 
     ### Context similarity ###
-    
-    def _find_most_similar_columns(self, question: str, evidence: str, keywords: List[str], top_k: int) -> Dict[str, Dict[str, Dict[str, str]]]:
+
+    def _find_most_similar_columns(
+        self, question: str, evidence: str, keywords: List[str], top_k: int
+    ) -> Dict[str, Dict[str, Dict[str, str]]]:
         """
         Finds the most similar columns based on the question and evidence.
 
@@ -62,21 +65,32 @@ class RetrieveContext(Tool):
         """
         logging.info("Finding the most similar columns")
         tables_with_descriptions = {}
-        
+
         for keyword in keywords:
             question_based_query = f"{question} {keyword}"
             evidence_based_query = f"{evidence} {keyword}"
-            
-            retrieved_question_based_query = DatabaseManager().query_vector_db(question_based_query, top_k=top_k)
-            retrieved_evidence_based_query = DatabaseManager().query_vector_db(evidence_based_query, top_k=top_k)
-            
-            tables_with_descriptions = self._add_description(tables_with_descriptions, retrieved_question_based_query)
-            tables_with_descriptions = self._add_description(tables_with_descriptions, retrieved_evidence_based_query)
-        
+
+            retrieved_question_based_query = DatabaseManager().query_vector_db(
+                question_based_query, top_k=top_k
+            )
+            retrieved_evidence_based_query = DatabaseManager().query_vector_db(
+                evidence_based_query, top_k=top_k
+            )
+
+            tables_with_descriptions = self._add_description(
+                tables_with_descriptions, retrieved_question_based_query
+            )
+            tables_with_descriptions = self._add_description(
+                tables_with_descriptions, retrieved_evidence_based_query
+            )
+
         return tables_with_descriptions
 
-    def _add_description(self, tables_with_descriptions: Dict[str, Dict[str, Dict[str, str]]], 
-                         retrieved_descriptions: Dict[str, Dict[str, Dict[str, str]]]) -> Dict[str, Dict[str, Dict[str, str]]]:
+    def _add_description(
+        self,
+        tables_with_descriptions: Dict[str, Dict[str, Dict[str, str]]],
+        retrieved_descriptions: Dict[str, Dict[str, Dict[str, str]]],
+    ) -> Dict[str, Dict[str, Dict[str, str]]]:
         """
         Adds descriptions to tables from retrieved descriptions.
 
@@ -94,12 +108,17 @@ class RetrieveContext(Tool):
             if table_name not in tables_with_descriptions:
                 tables_with_descriptions[table_name] = {}
             for column_name, description in column_descriptions.items():
-                if (column_name not in tables_with_descriptions[table_name] or 
-                    description["score"] > tables_with_descriptions[table_name][column_name]["score"]):
+                if (
+                    column_name not in tables_with_descriptions[table_name]
+                    or description["score"]
+                    > tables_with_descriptions[table_name][column_name]["score"]
+                ):
                     tables_with_descriptions[table_name][column_name] = description
         return tables_with_descriptions
 
-    def _format_retrieved_descriptions(self, retrieved_columns: Dict[str, Dict[str, Dict[str, str]]]) -> Dict[str, Dict[str, Dict[str, str]]]:
+    def _format_retrieved_descriptions(
+        self, retrieved_columns: Dict[str, Dict[str, Dict[str, str]]]
+    ) -> Dict[str, Dict[str, Dict[str, str]]]:
         """
         Formats retrieved descriptions by removing the score key.
 

@@ -10,18 +10,23 @@ class InformationRetriever(Agent):
     """
     Agent responsible for retrieving relevant entities and context from the question and hint.
     """
-    
+
     def __init__(self, config: dict):
         """Initialize the tools needed for information retrieval"""
         super().__init__(
             name="Information Retriever",
-            task=("retrieve the most important entities and context relevant to the keywords of the question, through ",
-                         "extracting keywords, retrieving entities, and retrieving context"),
-            config=config
+            task=(
+                (
+                    "retrieve the most important entities and context relevant to the keywords of"
+                    " the question, through "
+                ),
+                "extracting keywords, retrieving entities, and retrieving context",
+            ),
+            config=config,
         )
-        
+
         self.tools = {
             "extract_keywords": ExtractKeywords(**config["tools"]["extract_keywords"]),
             "retrieve_entity": RetrieveEntity(**config["tools"]["retrieve_entity"]),
-            "retrieve_context": RetrieveContext(**config["tools"]["retrieve_context"])
+            "retrieve_context": RetrieveContext(**config["tools"]["retrieve_context"]),
         }

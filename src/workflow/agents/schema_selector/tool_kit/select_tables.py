@@ -8,26 +8,34 @@ from workflow.system_state import SystemState
 from workflow.agents.tool import Tool
 from runner.database_manager import DatabaseManager
 
+
 class SelectTables(Tool):
     """
     Tool for selecting tables based on the specified mode and updating the tentative schema.
     """
 
-    def __init__(self, mode: str, template_name: str = None, engine_config: str = None, parser_name: str = None, sampling_count: int = 1):
+    def __init__(
+        self,
+        mode: str,
+        template_name: str = None,
+        engine_config: str = None,
+        parser_name: str = None,
+        sampling_count: int = 1,
+    ):
         super().__init__()
         self.mode = mode
         self.template_name = template_name
         self.engine_config = engine_config
         self.parser_name = parser_name
         self.sampling_count = sampling_count
-        
+
         self.selected_tables = []
         self.chain_of_thought_reasoning = ""
 
     def _run(self, state: SystemState):
         """
         Executes the table selection process.
-        
+
         Args:
             state (SystemState): The current system state.
 
@@ -36,13 +44,13 @@ class SelectTables(Tool):
         """
 
         if self.mode == "ask_model":
-            
+
             request_kwargs = {
                 "DATABASE_SCHEMA": state.get_schema_string(schema_type="tentative"),
                 "QUESTION": state.task.question,
                 "HINT": state.task.evidence,
             }
-            
+
             response = async_llm_chain_call(
                 prompt=get_prompt(template_name=self.template_name),
                 engine=get_llm_chain(**self.engine_config),
@@ -55,7 +63,7 @@ class SelectTables(Tool):
             aggregated_result = self.aggregate_tables(response)
             self.selected_tables = aggregated_result["table_names"]
             self.chain_of_thought_reasoning = aggregated_result["chain_of_thought_reasoning"]
-            
+
         elif self.mode == "corrects":
             self.chain_of_thought_reasoning = "Tables that are appeared in the gold SQL query."
             self.selected_tables = DatabaseManager().get_sql_tables(state.task.SQL)
@@ -89,7 +97,7 @@ class SelectTables(Tool):
             for table in response_tables:
                 if table.lower() not in [t.lower() for t in tables]:
                     tables.append(table)
-        
+
         aggregated_chain_of_thoughts = "\n----\n".join(chain_of_thoughts)
         aggregation_result = {
             "table_names": tables,

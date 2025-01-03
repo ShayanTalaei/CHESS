@@ -20,15 +20,20 @@ GCP_CREDENTIALS = os.getenv("GCP_CREDENTIALS")
 
 if GCP_CREDENTIALS and GCP_PROJECT and GCP_REGION:
     aiplatform.init(
-    project=GCP_PROJECT,
-    location=GCP_REGION,
-    credentials=service_account.Credentials.from_service_account_file(GCP_CREDENTIALS)
+        project=GCP_PROJECT,
+        location=GCP_REGION,
+        credentials=service_account.Credentials.from_service_account_file(GCP_CREDENTIALS),
     )
-    vertexai.init(project=GCP_PROJECT, location=GCP_REGION, credentials=service_account.Credentials.from_service_account_file(GCP_CREDENTIALS))
+    vertexai.init(
+        project=GCP_PROJECT,
+        location=GCP_REGION,
+        credentials=service_account.Credentials.from_service_account_file(GCP_CREDENTIALS),
+    )
 
 
 # EMBEDDING_FUNCTION = VertexAIEmbeddings(model_name="text-embedding-004")#OpenAIEmbeddings(model="text-embedding-3-large")
-EMBEDDING_FUNCTION = OpenAIEmbeddings(model="text-embedding-3-large")
+# EMBEDDING_FUNCTION = OpenAIEmbeddings(model="text-embedding-3-large")
+EMBEDDING_FUNCTION = None
 
 
 def make_db_context_vec_db(db_directory_path: str, **kwargs) -> None:
@@ -42,22 +47,28 @@ def make_db_context_vec_db(db_directory_path: str, **kwargs) -> None:
     """
     db_id = Path(db_directory_path).name
 
-    table_description = load_tables_description(db_directory_path, kwargs.get("use_value_description", True))
+    table_description = load_tables_description(
+        db_directory_path, kwargs.get("use_value_description", True)
+    )
     docs = []
-    
+
     for table_name, columns in table_description.items():
         for column_name, column_info in columns.items():
             metadata = {
                 "table_name": table_name,
                 "original_column_name": column_name,
-                "column_name": column_info.get('column_name', ''),
-                "column_description": column_info.get('column_description', ''),
-                "value_description": column_info.get('value_description', '') if kwargs.get("use_value_description", True) else ""
+                "column_name": column_info.get("column_name", ""),
+                "column_description": column_info.get("column_description", ""),
+                "value_description": (
+                    column_info.get("value_description", "")
+                    if kwargs.get("use_value_description", True)
+                    else ""
+                ),
             }
-            for key in ['column_name', 'column_description', 'value_description']:
-                if column_info.get(key, '').strip():
+            for key in ["column_name", "column_description", "value_description"]:
+                if column_info.get(key, "").strip():
                     docs.append(Document(page_content=column_info[key], metadata=metadata))
-    
+
     logging.info(f"Creating context vector database for {db_id}")
     vector_db_path = Path(db_directory_path) / "context_vector_db"
 

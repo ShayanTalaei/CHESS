@@ -12,9 +12,9 @@ import os
 
 from sqlglot import parse_one, exp
 
+
 class TimeoutException(Exception):
     pass
-
 
 
 def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout: int = 60) -> Any:
@@ -26,7 +26,7 @@ def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout:
 
         def run(self):
             try:
-                with sqlite3.connect(db_path, timeout=60) as conn:
+                with sqlite3.connect(db_path, timeout=6000) as conn:
                     cursor = conn.cursor()
                     cursor.execute(sql)
                     if fetch == "all":
@@ -39,9 +39,12 @@ def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout:
                     elif isinstance(fetch, int):
                         self.result = cursor.fetchmany(fetch)
                     else:
-                        raise ValueError("Invalid fetch argument. Must be 'all', 'one', 'random', or an integer.")
+                        raise ValueError(
+                            "Invalid fetch argument. Must be 'all', 'one', 'random', or an integer."
+                        )
             except Exception as e:
                 self.exception = e
+
     query_thread = QueryThread()
     query_thread.start()
     query_thread.join(timeout)
@@ -56,14 +59,33 @@ def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout:
 def _clean_sql(sql: str) -> str:
     """
     Cleans the SQL query by removing unwanted characters and whitespace.
-    
+
     Args:
         sql (str): The SQL query string.
-        
+
     Returns:
         str: The cleaned SQL query string.
     """
-    return sql.replace('\n', ' ').replace('"', "'").strip("`.")
+    # return sql.replace("\n", " ").replace('"', "'").strip("`.")
+
+    # given sql, remove db and catalog using sqlglot
+    def sql_transform(node: exp.Expression) -> exp.Expression:
+        """
+        remove db and schema using sqlglot
+        """
+        if not isinstance(node, exp.Table):
+            return node
+
+        # Remove catalog and db from the node
+        node.set("catalog", None)
+        node.set("db", None)
+
+        return node
+
+    parsed_tree = parse_one(sql, dialect="redshift")
+    clean_tree = parsed_tree.transform(sql_transform)
+    return clean_tree.sql(dialect="sqlite")
+
 
 def create_smaller_db(original_db_path, max_rows=100000):
     if not os.path.exists(original_db_path):
@@ -77,22 +99,28 @@ def create_smaller_db(original_db_path, max_rows=100000):
     cursor_orig.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = cursor_orig.fetchall()
     cursor_new = conn_new.cursor()
-    
+
     for table in tables:
         if table[0] == "sqlite_sequence":
-          continue
+            continue
         table_name = table[0]
-        cursor_orig.execute(f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+        cursor_orig.execute(
+            f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+        )
         ddl = cursor_orig.fetchone()[0]
         cursor_new.execute(ddl)
         cursor_orig.execute(f"SELECT * FROM `{table_name}` ORDER BY RANDOM() LIMIT {max_rows}")
         rows = cursor_orig.fetchall()
-        cursor_new.executemany(f"INSERT INTO `{table_name}` VALUES ({','.join(['?' for _ in range(len(rows[0]))])})", rows)
+        cursor_new.executemany(
+            f"INSERT INTO `{table_name}` VALUES ({','.join(['?' for _ in range(len(rows[0]))])})",
+            rows,
+        )
         conn_new.commit()
 
     conn_orig.close()
     conn_new.close()
     return new_db_path
+
 
 def task(queue, db_path, sql, fetch):
     try:
@@ -100,6 +128,7 @@ def task(queue, db_path, sql, fetch):
         queue.put(result)
     except Exception as e:
         queue.put(e)
+
 
 def subprocess_sql_executor(db_path: str, sql: str, timeout: int = 60):
     queue = Queue()
@@ -116,23 +145,24 @@ def subprocess_sql_executor(db_path: str, sql: str, timeout: int = 60):
             result = queue.get_nowait()
         except Empty:
             raise Exception("No data returned from the process.")
-        
+
         if isinstance(result, Exception):
             raise result
         return result
 
+
 # def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all") -> Any:
 #     """
 #     Executes an SQL query on a database and fetches results.
-    
+
 #     Args:
 #         db_path (str): The path to the database file.
 #         sql (str): The SQL query to execute.
 #         fetch (Union[str, int]): How to fetch the results. Options are "all", "one", "random", or an integer.
-        
+
 #     Returns:
 #         Any: The fetched results based on the fetch argument.
-    
+
 #     Raises:
 #         Exception: If an error occurs during SQL execution.
 #     """
@@ -156,25 +186,26 @@ def subprocess_sql_executor(db_path: str, sql: str, timeout: int = 60):
 #             elif isinstance(fetch, int):
 #                 return cursor.execute(sql).fetchmany(fetch)
 #             elif fetch == "limited":
-#                 return  cursor.execute(sql).fetchall()   
+#                 return  cursor.execute(sql).fetchall()
 #             else:
 #                 raise ValueError("Invalid fetch argument. Must be 'all', 'one', 'random', 'limited', or an integer.")
 #     except Exception as e:
 #         logging.error(f"Error in execute_sql: {e}\nSQL: {sql}, fetch: {fetch}")
 #         raise e
 
+
 def _compare_sqls_outcomes(db_path: str, predicted_sql: str, ground_truth_sql: str) -> int:
     """
     Compares the outcomes of two SQL queries to check for equivalence.
-    
+
     Args:
         db_path (str): The path to the database file.
         predicted_sql (str): The predicted SQL query.
         ground_truth_sql (str): The ground truth SQL query.
-        
+
     Returns:
         int: 1 if the outcomes are equivalent, 0 otherwise.
-    
+
     Raises:
         Exception: If an error occurs during SQL execution.
     """
@@ -186,22 +217,27 @@ def _compare_sqls_outcomes(db_path: str, predicted_sql: str, ground_truth_sql: s
         logging.critical(f"Error comparing SQL outcomes: {e}")
         raise e
 
-def compare_sqls(db_path: str, predicted_sql: str, ground_truth_sql: str, meta_time_out: int = 30) -> Dict[str, Union[int, str]]:
+
+def compare_sqls(
+    db_path: str, predicted_sql: str, ground_truth_sql: str, meta_time_out: int = 30
+) -> Dict[str, Union[int, str]]:
     """
     Compares predicted SQL with ground truth SQL within a timeout.
-    
+
     Args:
         db_path (str): The path to the database file.
         predicted_sql (str): The predicted SQL query.
         ground_truth_sql (str): The ground truth SQL query.
         meta_time_out (int): The timeout for the comparison.
-        
+
     Returns:
         dict: A dictionary with the comparison result and any error message.
     """
-    predicted_sql = _clean_sql(predicted_sql)
+    # predicted_sql = _clean_sql(predicted_sql)
     try:
-        res = func_timeout(meta_time_out, _compare_sqls_outcomes, args=(db_path, predicted_sql, ground_truth_sql))
+        res = func_timeout(
+            meta_time_out, _compare_sqls_outcomes, args=(db_path, predicted_sql, ground_truth_sql)
+        )
         error = "incorrect answer" if res == 0 else "--"
     except FunctionTimedOut:
         logging.warning("Comparison timed out.")
@@ -211,17 +247,20 @@ def compare_sqls(db_path: str, predicted_sql: str, ground_truth_sql: str, meta_t
         logging.error(f"Error in compare_sqls: {e}")
         error = str(e)
         res = 0
-    return {'exec_res': res, 'exec_err': error}
+    return {"exec_res": res, "exec_err": error}
 
-def validate_sql_query(db_path: str, sql: str, max_returned_rows: int = 30) -> Dict[str, Union[str, Any]]:
+
+def validate_sql_query(
+    db_path: str, sql: str, max_returned_rows: int = 30
+) -> Dict[str, Union[str, Any]]:
     """
     Validates an SQL query by executing it and returning the result.
-    
+
     Args:
         db_path (str): The path to the database file.
         sql (str): The SQL query to validate.
         max_returned_rows (int): The maximum number of rows to return.
-        
+
     Returns:
         dict: A dictionary with the SQL query, result, and status.
     """
@@ -232,14 +271,15 @@ def validate_sql_query(db_path: str, sql: str, max_returned_rows: int = 30) -> D
         logging.error(f"Error in validate_sql_query: {e}")
         return {"SQL": sql, "RESULT": str(e), "STATUS": "ERROR"}
 
+
 def aggregate_sqls(db_path: str, sqls: List[str]) -> str:
     """
     Aggregates multiple SQL queries by validating them and clustering based on result sets.
-    
+
     Args:
         db_path (str): The path to the database file.
         sqls (List[str]): A list of SQL queries to aggregate.
-        
+
     Returns:
         str: The shortest SQL query from the largest cluster of equivalent queries.
     """
@@ -248,23 +288,24 @@ def aggregate_sqls(db_path: str, sqls: List[str]) -> str:
 
     # Group queries by unique result sets
     for result in results:
-        if result['STATUS'] == 'OK':
+        if result["STATUS"] == "OK":
             # Using a frozenset as the key to handle unhashable types like lists
-            key = frozenset(tuple(row) for row in result['RESULT'])
+            key = frozenset(tuple(row) for row in result["RESULT"])
             if key in clusters:
-                clusters[key].append(result['SQL'])
+                clusters[key].append(result["SQL"])
             else:
-                clusters[key] = [result['SQL']]
-    
+                clusters[key] = [result["SQL"]]
+
     if clusters:
         # Find the largest cluster
         largest_cluster = max(clusters.values(), key=len, default=[])
         # Select the shortest SQL query from the largest cluster
         if largest_cluster:
             return min(largest_cluster, key=len)
-    
+
     logging.warning("No valid SQL clusters found. Returning the first SQL query.")
     return sqls[0]
+
 
 class ExecutionStatus(Enum):
     SYNTACTICALLY_CORRECT = "SYNTACTICALLY_CORRECT"
@@ -273,14 +314,15 @@ class ExecutionStatus(Enum):
     ZERO_COUNT_RESULT = "ZERO_COUNT_RESULT"
     ALL_NONE_RESULT = "ALL_NONE_RESULT"
     SYNTACTICALLY_INCORRECT = "SYNTACTICALLY_INCORRECT"
-    
+
+
 def get_execution_status(db_path: str, sql: str, execution_result: List = None) -> ExecutionStatus:
     """
     Determines the status of an SQL query execution result.
-    
+
     Args:
         execution_result (List): The result of executing an SQL query.
-        
+
     Returns:
         ExecutionStatus: The status of the execution result.
     """
@@ -291,7 +333,7 @@ def get_execution_status(db_path: str, sql: str, execution_result: List = None) 
             print("Timeout in get_execution_status")
             return ExecutionStatus.SYNTACTICALLY_INCORRECT
         except Exception:
-            return ExecutionStatus.SYNTACTICALLY_INCORRECT   
+            return ExecutionStatus.SYNTACTICALLY_INCORRECT
     if (execution_result is None) or (execution_result == []):
         return ExecutionStatus.EMPTY_RESULT
     # elif len(execution_result) == 1:
@@ -304,6 +346,7 @@ def get_execution_status(db_path: str, sql: str, execution_result: List = None) 
     # elif all([all([val is None for val in res]) for res in execution_result]):
     #     return ExecutionStatus.ALL_NONE_RESULT
     return ExecutionStatus.SYNTACTICALLY_CORRECT
+
 
 def run_with_timeout(func, *args, timeouts=[3, 5]):
     def wrapper(stop_event, *args):
@@ -323,16 +366,22 @@ def run_with_timeout(func, *args, timeouts=[3, 5]):
         thread.join(timeout)
 
         if thread.is_alive():
-            logging.error(f"Function {func.__name__} timed out after {timeout} seconds on attempt {attempt + 1}/{len(timeouts)}")
+            logging.error(
+                f"Function {func.__name__} timed out after {timeout} seconds on attempt"
+                f" {attempt + 1}/{len(timeouts)}"
+            )
             stop_event.set()  # Signal the thread to stop
             thread.join()  # Wait for the thread to recognize the stop event
             if attempt == len(timeouts) - 1:
                 raise TimeoutException(
-                    f"Function {func.__name__} timed out after {timeout} seconds on attempt {attempt + 1}/{len(timeouts)}"
+                    f"Function {func.__name__} timed out after {timeout} seconds on attempt"
+                    f" {attempt + 1}/{len(timeouts)}"
                 )
         else:
             if result[1] is not None:
                 raise result[1]
             return result[0]
 
-    raise TimeoutException(f"Function {func.__name__} failed to complete after {len(timeouts)} attempts")
+    raise TimeoutException(
+        f"Function {func.__name__} failed to complete after {len(timeouts)} attempts"
+    )

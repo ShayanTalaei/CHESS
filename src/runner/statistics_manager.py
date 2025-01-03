@@ -3,11 +3,14 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Union, Tuple
 
+
 @dataclass
 class Statistics:
     corrects: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
     incorrects: Dict[str, List[Tuple[str, str]]] = field(default_factory=dict)
-    errors: Dict[str, List[Union[Tuple[str, str], Tuple[str, str, str]]]] = field(default_factory=dict)
+    errors: Dict[str, List[Union[Tuple[str, str], Tuple[str, str, str]]]] = field(
+        default_factory=dict
+    )
     total: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Dict[str, Union[Dict[str, int], List[Tuple[str, str]]]]]:
@@ -23,7 +26,7 @@ class Statistics:
                     "correct": len(self.corrects.get(key, [])),
                     "incorrect": len(self.incorrects.get(key, [])),
                     "error": len(self.errors.get(key, [])),
-                    "total": self.total.get(key, 0)
+                    "total": self.total.get(key, 0),
                 }
                 for key in self.total
             },
@@ -31,11 +34,12 @@ class Statistics:
                 key: {
                     "correct": sorted(self.corrects.get(key, [])),
                     "incorrect": sorted(self.incorrects.get(key, [])),
-                    "error": sorted(self.errors.get(key, []))
+                    "error": sorted(self.errors.get(key, [])),
                 }
                 for key in self.total
-            }
+            },
         }
+
 
 class StatisticsManager:
     def __init__(self, result_directory: str):
@@ -54,7 +58,9 @@ class StatisticsManager:
             self.statistics_file_path.touch()
             self.dump_statistics_to_file()
 
-    def update_stats(self, db_id: str, question_id: str, validation_for: str, result: Dict[str, Any]):
+    def update_stats(
+        self, db_id: str, question_id: str, validation_for: str, result: Dict[str, Any]
+    ):
         """
         Updates the statistics based on the validation result.
 
@@ -87,5 +93,5 @@ class StatisticsManager:
         """
         Dumps the current statistics to a JSON file.
         """
-        with self.statistics_file_path.open('w') as f:
+        with self.statistics_file_path.open("w") as f:
             json.dump(self.statistics.to_dict(), f, indent=4)

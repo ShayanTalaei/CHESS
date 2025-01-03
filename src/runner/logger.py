@@ -6,6 +6,7 @@ from typing import Any, List, Dict, Union
 
 from runner.task import Task
 
+
 class Logger:
     _instance = None
     _lock = Lock()
@@ -61,7 +62,7 @@ class Logger:
         log_level_attr = getattr(logging, log_level.upper(), None)
         if log_level_attr is None:
             raise ValueError(f"Invalid log level: {log_level}")
-        logging.basicConfig(level=log_level_attr, format='%(levelname)s: %(message)s')
+        logging.basicConfig(level=log_level_attr, format="%(levelname)s: %(message)s")
 
     def log(self, message: str, log_level: str = "info", task: Task = None):
         """
@@ -95,7 +96,10 @@ class Logger:
             with log_file_path.open("a") as file:
                 for conversation in conversations:
                     text = conversation["text"]
-                    file.write(f"############################## {conversation['from']} at step {conversation['step']} ##############################\n\n")
+                    file.write(
+                        f"############################## {conversation['from']} at step"
+                        f" {conversation['step']} ##############################\n\n"
+                    )
                     if isinstance(text, str):
                         file.write(text)
                     elif isinstance(text, (list, dict)):

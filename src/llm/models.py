@@ -7,6 +7,7 @@ from llm.engine_configs import ENGINE_CONFIGS
 from runner.logger import Logger
 from threading_utils import ordered_concurrent_function_calls
 
+
 def get_llm_chain(engine_name: str, temperature: float = 0, base_uri: str = None) -> Any:
     """
     Returns the appropriate LLM chain based on the provided engine name and temperature.
@@ -24,17 +25,17 @@ def get_llm_chain(engine_name: str, temperature: float = 0, base_uri: str = None
     """
     if engine_name not in ENGINE_CONFIGS:
         raise ValueError(f"Engine {engine_name} not supported")
-    
+
     config = ENGINE_CONFIGS[engine_name]
     constructor = config["constructor"]
     params = config["params"]
     if temperature:
         params["temperature"] = temperature
-    
+
     # Adjust base_uri if provided
     if base_uri and "openai_api_base" in params:
         params["openai_api_base"] = f"{base_uri}/v1"
-    
+
     model = constructor(**params)
     if "preprocess" in config:
         llm_chain = config["preprocess"] | model
@@ -42,7 +43,17 @@ def get_llm_chain(engine_name: str, temperature: float = 0, base_uri: str = None
         llm_chain = model
     return llm_chain
 
-def call_llm_chain(prompt: Any, engine: Any, parser: Any, request_kwargs: Dict[str, Any], step: int, max_attempts: int = 12, backoff_base: int = 2, jitter_max: int = 60) -> Any:
+
+def call_llm_chain(
+    prompt: Any,
+    engine: Any,
+    parser: Any,
+    request_kwargs: Dict[str, Any],
+    step: int,
+    max_attempts: int = 12,
+    backoff_base: int = 2,
+    jitter_max: int = 60,
+) -> Any:
     """
     Calls the LLM chain with exponential backoff and jitter on failure.
 
@@ -74,24 +85,14 @@ def call_llm_chain(prompt: Any, engine: Any, parser: Any, request_kwargs: Dict[s
                     engine = get_llm_chain("gemini-1.5-flash")
                     raise OutputParserException("Empty output")
             else:
-                if output.content.strip() == "":    
+                if output.content.strip() == "":
                     engine = get_llm_chain("gemini-1.5-flash")
                     raise OutputParserException("Empty output")
             output = parser.invoke(output)
-            logger.log_conversation(
-                [
-                    {
-                        "text": prompt_text,
-                        "from": "Human",
-                        "step": step
-                    },
-                    {
-                        "text": output,
-                        "from": "AI",
-                        "step": step
-                    }
-                ]
-            )
+            logger.log_conversation([
+                {"text": prompt_text, "from": "Human", "step": step},
+                {"text": output, "from": "AI", "step": step},
+            ])
             return output
         except OutputParserException as e:
             logger.log(f"OutputParserException: {e}", "warning")
@@ -106,16 +107,19 @@ def call_llm_chain(prompt: Any, engine: Any, parser: Any, request_kwargs: Dict[s
             #     sleep_time = (backoff_base ** attempt) + random.uniform(0, jitter_max)
             #     time.sleep(sleep_time)
             # else:
-            logger.log(f"Failed to invoke the chain {attempt + 1} times.\n{type(e)} <{e}>\n", "error")
+            logger.log(
+                f"Failed to invoke the chain {attempt + 1} times.\n{type(e)} <{e}>\n", "error"
+            )
             raise e
 
+
 def async_llm_chain_call(
-    prompt: Any, 
-    engine: Any, 
-    parser: Any, 
-    request_list: List[Dict[str, Any]], 
-    step: int, 
-    sampling_count: int = 1
+    prompt: Any,
+    engine: Any,
+    parser: Any,
+    request_list: List[Dict[str, Any]],
+    step: int,
+    sampling_count: int = 1,
 ) -> List[List[Any]]:
     """
     Asynchronously calls the LLM chain using multiple threads.
@@ -137,14 +141,16 @@ def async_llm_chain_call(
     for request_id, request_kwargs in enumerate(request_list):
         for _ in range(sampling_count):
             call_list.append({
-                'function': call_llm_chain,
-                'kwargs': {
-                    'prompt': prompt,
-                    'engine': engine[engine_id % len(engine)] if isinstance(engine,list) else engine,
-                    'parser': parser,
-                    'request_kwargs': request_kwargs,
-                    'step': step
-                }
+                "function": call_llm_chain,
+                "kwargs": {
+                    "prompt": prompt,
+                    "engine": (
+                        engine[engine_id % len(engine)] if isinstance(engine, list) else engine
+                    ),
+                    "parser": parser,
+                    "request_kwargs": request_kwargs,
+                    "step": step,
+                },
             })
             engine_id += 1
 
@@ -153,13 +159,15 @@ def async_llm_chain_call(
 
     # Group results by sampling_count
     grouped_results = [
-        results[i * sampling_count: (i + 1) * sampling_count]
-        for i in range(len(request_list))
+        results[i * sampling_count : (i + 1) * sampling_count] for i in range(len(request_list))
     ]
 
     return grouped_results
 
-def call_engine(message: str, engine: Any, max_attempts: int = 12, backoff_base: int = 2, jitter_max: int = 60) -> Any:
+
+def call_engine(
+    message: str, engine: Any, max_attempts: int = 12, backoff_base: int = 2, jitter_max: int = 60
+) -> Any:
     """
     Calls the LLM chain with exponential backoff and jitter on failure.
 
@@ -187,5 +195,7 @@ def call_engine(message: str, engine: Any, max_attempts: int = 12, backoff_base:
             #     sleep_time = (backoff_base ** attempt) + random.uniform(0, jitter_max)
             #     time.sleep(sleep_time)
             # else:
-            logger.log(f"Failed to invoke the chain {attempt + 1} times.\n{type(e)} <{e}>\n", "error")
+            logger.log(
+                f"Failed to invoke the chain {attempt + 1} times.\n{type(e)} <{e}>\n", "error"
+            )
             raise e

@@ -9,17 +9,20 @@ class SchemaSelector(Agent):
     """
     Agent responsible for selecting appropriate schemas based on the context.
     """
-    
+
     def __init__(self, config: dict):
         """Initialize the tools needed for schema selection"""
         super().__init__(
             name="schema_selector",
-            task="narrow down the schema into the most relevant ones through filtering columns, selecting tables and selecting columns",
+            task=(
+                "narrow down the schema into the most relevant ones through filtering columns,"
+                " selecting tables and selecting columns"
+            ),
             config=config,
         )
-        
+
         self.tools = {
-            "filter_column": FilterColumn(**config["tools"]["filter_column"]),              
+            "filter_column": FilterColumn(**config["tools"]["filter_column"]),
             "select_tables": SelectTables(**config["tools"]["select_tables"]),
-            "select_columns": SelectColumns(**config["tools"]["select_columns"])
+            "select_columns": SelectColumns(**config["tools"]["select_columns"]),
         }

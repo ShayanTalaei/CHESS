@@ -7,6 +7,7 @@ from func_timeout import func_timeout, FunctionTimedOut
 
 LAZY_RESULT_TOKEN = "$$$LAZY$$$"
 
+
 class SQLMetaInfo(BaseModel):
     SQL: str
     plan: str = ""
@@ -17,15 +18,14 @@ class SQLMetaInfo(BaseModel):
     feedbacks: List[str] = []
     needs_refinement: bool = False
     refinement_steps: List[str] = []
-    
+
     _execution_result: List[Any] = PrivateAttr(default=[])
     _execution_status: ExecutionStatus = PrivateAttr(default=None)
 
-    
     @property
     def execution_result(self) -> List[Any]:
         if self._execution_result == []:
-            try:    
+            try:
                 result = DatabaseManager().execute_sql(self.SQL, "all")
             except FunctionTimedOut:
                 print("Timeout in execution_result")
@@ -36,7 +36,7 @@ class SQLMetaInfo(BaseModel):
             return self._retrieve_lazy_result()
         else:
             return self._execution_result
-        
+
     @property
     def execution_status(self) -> ExecutionStatus:
         if self._execution_status is None:
@@ -44,7 +44,7 @@ class SQLMetaInfo(BaseModel):
                 result = self._execution_result
             except Exception:
                 return ExecutionStatus.SYNTACTICALLY_INCORRECT
-            self._execution_status = DatabaseManager().get_execution_status(self.SQL,result)
+            self._execution_status = DatabaseManager().get_execution_status(self.SQL, result)
         return self._execution_status
 
     @execution_result.setter
@@ -56,14 +56,13 @@ class SQLMetaInfo(BaseModel):
             self._execution_result = result
 
     def _is_too_long(self, result: List[Any]) -> bool:
-        #TODO: customize this method's logic
+        # TODO: customize this method's logic
         return len(result) > 50000
 
     def _retrieve_lazy_result(self) -> List[Any]:
-        try:    
+        try:
             result = DatabaseManager().execute_sql(self.SQL, "all")
         except FunctionTimedOut:
             print("Timeout in execution_result")
             result = []
         return result
-

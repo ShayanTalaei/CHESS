@@ -8,6 +8,7 @@ from database_utils.db_values.preprocess import _create_minhash
 
 ### Database value similarity ###
 
+
 def _jaccard_similarity(m1: MinHash, m2: MinHash) -> float:
     """
     Computes the Jaccard similarity between two MinHash objects.
@@ -21,7 +22,10 @@ def _jaccard_similarity(m1: MinHash, m2: MinHash) -> float:
     """
     return m1.jaccard(m2)
 
-def load_db_lsh(db_directory_path: str) -> Tuple[MinHashLSH, Dict[str, Tuple[MinHash, str, str, str]]]:
+
+def load_db_lsh(
+    db_directory_path: str,
+) -> Tuple[MinHashLSH, Dict[str, Tuple[MinHash, str, str, str]]]:
     """
     Loads the LSH and MinHashes from the preprocessed files in the specified directory.
 
@@ -38,15 +42,24 @@ def load_db_lsh(db_directory_path: str) -> Tuple[MinHashLSH, Dict[str, Tuple[Min
     try:
         with open(Path(db_directory_path) / "preprocessed" / f"{db_id}_lsh.pkl", "rb") as file:
             lsh = pickle.load(file)
-        with open(Path(db_directory_path) / "preprocessed" / f"{db_id}_minhashes.pkl", "rb") as file:
+        with open(
+            Path(db_directory_path) / "preprocessed" / f"{db_id}_minhashes.pkl", "rb"
+        ) as file:
             minhashes = pickle.load(file)
         return lsh, minhashes
     except Exception as e:
         logging.error(f"Error loading LSH for {db_id}: {e}")
         raise e
 
-def query_lsh(lsh: MinHashLSH, minhashes: Dict[str, Tuple[MinHash, str, str, str]], keyword: str, 
-              signature_size: int = 100, n_gram: int = 3, top_n: int = 10) -> Dict[str, Dict[str, List[str]]]:
+
+def query_lsh(
+    lsh: MinHashLSH,
+    minhashes: Dict[str, Tuple[MinHash, str, str, str]],
+    keyword: str,
+    signature_size: int = 100,
+    n_gram: int = 3,
+    top_n: int = 10,
+) -> Dict[str, Dict[str, List[str]]]:
     """
     Queries the LSH for similar values to the given keyword and returns the top results.
 
@@ -63,7 +76,9 @@ def query_lsh(lsh: MinHashLSH, minhashes: Dict[str, Tuple[MinHash, str, str, str
     """
     query_minhash = _create_minhash(signature_size, keyword, n_gram)
     results = lsh.query(query_minhash)
-    similarities = [(result, _jaccard_similarity(query_minhash, minhashes[result][0])) for result in results]
+    similarities = [
+        (result, _jaccard_similarity(query_minhash, minhashes[result][0])) for result in results
+    ]
     similarities = sorted(similarities, key=lambda x: x[1], reverse=True)[:top_n]
 
     similar_values_trimmed: Dict[str, Dict[str, List[str]]] = {}

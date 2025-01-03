@@ -8,7 +8,7 @@ class UnitTester(Agent):
     """
     Agent responsible for generating and evaluating unit tests.
     """
-    
+
     def __init__(self, config: dict):
         """Initialize the tools needed for unit testing"""
         super().__init__(
@@ -16,8 +16,8 @@ class UnitTester(Agent):
             task="generate unit tests then evaluate them",
             config=config,
         )
-        
+
         self.tools = {
             "generate_unit_test": GenerateUnitTest(**config["tools"]["generate_unit_test"]),
-            "evaluate": Evaluate(**config["tools"]["evaluate"])
+            "evaluate": Evaluate(**config["tools"]["evaluate"]),
         }
