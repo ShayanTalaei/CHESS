@@ -79,7 +79,7 @@ After preprocessing the databases, generate SQL queries for the BIRD dataset by 
     or
 
     ```bash
-    sh run/run_main_ir_ss_ch.sh
+    sh run/run_main_ir_ss_cg.sh
     ```
 
 ## Sub-sampled Development Set (SDS)
