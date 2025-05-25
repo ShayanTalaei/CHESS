@@ -25,7 +25,7 @@ Our framework offers configurable features that adapt to various deployment cons
 
 ## CHESS
 
-![CHESS Framework](images/chess.jpg)
+![CHESS Framework](images/CHESS-Multi-Agent-System.jpg)
 
 ## Setting up the Environment
 
