@@ -89,16 +89,3 @@ The sub-sampled development set (SDS) is a subset of the BIRD dataset with 10% o
 ## Supporting Other LLMs
 
 To use your own LLM, modify the `get_llm_chain(engine, temperature, base_uri=None)` function and add your LLM in `run/langchain_utils.py`.
-
-## Citation
-
-If you find this repository helpful, please cite the following paper:
-
-```bibtex
-@article{talaei2024chess,
-  title={CHESS: Contextual Harnessing for Efficient SQL Synthesis},
-  author={Talaei, Shayan and Pourreza, Mohammadreza and Chang, Yu-Chen and Mirhoseini, Azalia and Saberi, Amin},
-  journal={arXiv preprint arXiv:2405.16755},
-  year={2024}
-}
-```
